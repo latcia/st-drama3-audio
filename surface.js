@@ -6,10 +6,12 @@ let mounted = false;
 
 function decorate(content, mesid) {
     if (!displayed(content)) return;
+    const owner = activeProvider();
+    if (!owner) return;
     const message = SillyTavern.getContext().chat?.[mesid];
     if (!message || message.is_system || message.is_user || typeof message.mes !== 'string') return;
     const raw = message.mes;
-    const ranges = parseCast(messageText(mesid, content), activeProvider()?.settings).filter(part => part.clickable);
+    const ranges = parseCast(messageText(mesid, content), owner.settings).filter(part => part.clickable);
     const candidates = new Map();
     for (const part of ranges) {
         if (!candidates.has(part.text)) candidates.set(part.text, []);

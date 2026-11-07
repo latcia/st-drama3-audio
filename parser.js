@@ -10,8 +10,10 @@ export function nameKey(value) {
 const NAME = /^\s*(?:\*\*|__)?([\p{L}\p{N}][\p{L}\p{N} .’'_-]{0,39}?)(?:\*\*|__)?\s*[:：](?!\/\/)\s*/u;
 
 // A displayed paragraph or <br> can split a single quoted utterance.
-function scriptLines(text, capture) {
-    const pairs = Object.entries(QUOTES).filter(([key]) => capture[key]).map(([, pair]) => pair);
+function scriptLines(text) {
+    // Parse all quote boundaries first, then apply the user's capture filter.
+    // Disabled quote contents must never fall back to unquoted character speech.
+    const pairs = Object.values(QUOTES);
     const result = [];
     let current = '', active = null, depth = 0;
     for (const line of text.split(/\r?\n/)) {
@@ -36,11 +38,12 @@ function scriptLines(text, capture) {
 }
 
 export function quoteRanges(text, capture = DEFAULT_CAPTURE) {
-    const pairs = Object.entries(QUOTES).filter(([key]) => capture[key]).map(([, pair]) => pair);
+    const pairs = Object.entries(QUOTES).filter(([key]) => capture[key]);
     const ranges = [];
     for (let index = 0; index < text.length; index++) {
-        const pair = pairs.find(([open]) => text[index] === open && (index === 0 || text[index - 1] !== '\\'));
-        if (!pair) continue;
+        const selected = pairs.find(([, [open]]) => text[index] === open && (index === 0 || text[index - 1] !== '\\'));
+        if (!selected) continue;
+        const [kind, pair] = selected;
         let end = index + 1;
         let depth = 1;
         for (; end < text.length; end++) {
@@ -49,7 +52,7 @@ export function quoteRanges(text, capture = DEFAULT_CAPTURE) {
             if (text[end] === pair[1] && --depth === 0) break;
         }
         if (end === text.length || !text.slice(index + 1, end).trim()) continue;
-        ranges.push({ start: index + 1, end, text: text.slice(index + 1, end).trim() });
+        ranges.push({ start: index + 1, end, text: text.slice(index + 1, end).trim(), kind });
         index = end;
     }
     return ranges;
@@ -60,32 +63,39 @@ export function parseCast(text, settings = {}) {
     const mode = settings.mode ?? 'all';
     const clean = removeUnspoken(text, { extraTags: ['infobox', 'status', 'stats'] });
     const segments = [];
-    for (const line of scriptLines(clean, capture)) {
+    let translating = false;
+    let pendingSpeaker = null;
+    for (const line of scriptLines(clean)) {
         if (!line.trim()) continue;
         const label = NAME.exec(line);
-        const speaker = label?.[1]?.trim() ?? null;
+        const namedSpeaker = label?.[1]?.trim() ?? null;
+        if (label && /^(译文|翻译|中文译文|中文翻译|translation)$/iu.test(nameKey(namedSpeaker))) {
+            translating = true; pendingSpeaker = null;
+            continue;
+        }
+        if (label) translating = false;
+        if (translating) continue;
+        const speaker = namedSpeaker ?? pendingSpeaker;
+        pendingSpeaker = null;
         const narration = speaker === null || ['旁白', 'narrator'].includes(nameKey(speaker));
         const body = line.slice(label?.[0].length ?? 0).trim();
-        const quotes = quoteRanges(body, capture);
-        if (!body) continue;
-        if (mode === 'quotes') {
-            for (const quote of quotes) segments.push({ speaker, narration: false, text: quote.text, clickable: true });
-        } else if (!narration || mode === 'all') {
-            if (quotes.length === 1 && quotes[0].start === 1 && quotes[0].end === body.length - 1) {
-                segments.push({ speaker, narration: false, text: quotes[0].text, clickable: true });
-            } else if (!label && quotes.length) {
-                let offset = 0;
-                for (const quote of quotes) {
-                    const before = body.slice(offset, quote.start - 1).trim();
-                    if (before && mode === 'all') segments.push({ speaker: null, narration: true, text: before });
-                    segments.push({ speaker: null, narration: false, text: quote.text, clickable: true });
-                    offset = quote.end + 1;
-                }
-                const after = body.slice(offset).trim();
-                if (after && mode === 'all') segments.push({ speaker: null, narration: true, text: after });
-            } else {
-                segments.push({ speaker, narration, text: body, clickable: !narration });
+        if (!body) { pendingSpeaker = speaker; continue; }
+        const quotes = quoteRanges(body);
+        if (quotes.length) {
+            let offset = 0;
+            for (const quote of quotes) {
+                const before = body.slice(offset, quote.start - 1).trim();
+                if (before && mode === 'all') segments.push({ speaker: null, narration: true, text: before, clickable: false });
+                if (capture[quote.kind]) segments.push({ speaker, narration: false, text: quote.text, clickable: true });
+                offset = quote.end + 1;
             }
+            const after = body.slice(offset).trim();
+            if (after && mode === 'all') segments.push({ speaker: null, narration: true, text: after, clickable: false });
+        } else if (!Object.values(QUOTES).flat().some(mark => body.includes(mark)) &&
+            (mode === 'all' || (mode === 'labels' && !narration))) {
+            // Explicit narration/label playback may include unquoted text, but
+            // only selected quote interiors ever receive dialogue click targets.
+            segments.push({ speaker, narration, text: body, clickable: false });
         }
     }
     return segments;

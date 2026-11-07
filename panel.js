@@ -146,6 +146,7 @@ export function mountPanel() {
         <div class="d3-card">
         <label>识别范围<select id="d3_mode"><option value="all">角色台词和旁白</option><option value="labels">只读角色标签行</option><option value="quotes">只读选定引号内</option></select></label>
         <div id="d3_quotes" class="d3-actions"></div>
+        <p class="d3-help">只有已勾选引号里的台词会加下划线。译文、翻译行不参与配音；旁白是否朗读由识别范围决定。</p>
         <label class="d3-check"><input id="d3_cues" type="checkbox">保留 Drama 3 表演提示</label>
         </div>
         <div class="d3-section-heading"><h4>配音世界书</h4></div>
