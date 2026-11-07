@@ -6,6 +6,7 @@ import { nativeText } from './readable.js';
 
 const ENDPOINT = 'http://127.0.0.1:8036';
 const credentials = new Map();
+const credentialPrefix = 'drama3-cast-credentials:';
 export const PROVIDER = 'Drama 3 Cast (Local)';
 
 function endpointUrl(value) {
@@ -68,17 +69,41 @@ export class Drama3TtsProvider {
 
     configure(address, key, admin) {
         const endpoint = endpointUrl(address);
+        const saved = { key: key.trim(), admin: admin.trim() };
+        try {
+            if (saved.key || saved.admin) localStorage.setItem(credentialPrefix + endpoint, JSON.stringify(saved));
+            else localStorage.removeItem(credentialPrefix + endpoint);
+        } catch {
+            throw new Error('浏览器未允许保存密钥，请允许本站本地存储后重试。');
+        }
         if (endpoint !== this.settings.endpoint) { this.catalog = []; this.catalogVersion = ''; this.audioCache.clear(); }
         ++this.connectionGeneration;
-        credentials.set(endpoint, { key: key.trim(), admin: admin.trim() });
+        credentials.set(endpoint, saved);
         this.settings.endpoint = endpoint;
         this.save();
     }
 
     connectionGeneration = 0;
 
-    credentials() {
-        return credentials.get(this.settings.endpoint) ?? { key: '', admin: '' };
+    credentials(address = this.settings.endpoint) {
+        const endpoint = endpointUrl(address);
+        try {
+            const saved = JSON.parse(localStorage.getItem(credentialPrefix + endpoint));
+            if (saved && typeof saved.key === 'string' && typeof saved.admin === 'string') return saved;
+            return { key: '', admin: '' };
+        } catch { /* Use this page's existing credentials if storage is unavailable. */ }
+        return credentials.get(endpoint) ?? { key: '', admin: '' };
+    }
+
+    clearCredentials(address = this.settings.endpoint) {
+        const endpoint = endpointUrl(address);
+        try { localStorage.removeItem(credentialPrefix + endpoint); }
+        catch { throw new Error('浏览器未允许清除本地密钥，请检查本站存储权限。'); }
+        credentials.delete(endpoint);
+        if (endpoint === endpointUrl(this.settings.endpoint)) {
+            ++this.connectionGeneration;
+            this.catalog = []; this.catalogVersion = ''; this.audioCache.clear();
+        }
     }
 
     async request(path, { body, admin = false, signal } = {}) {

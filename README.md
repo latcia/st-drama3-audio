@@ -1,6 +1,6 @@
 # Drama 3 Cast
 
-SillyTavern 1.18.0+ 多角色配音扩展，当前版本 0.7.0。基于 severian-dev 的 [st-fish-audio](https://github.com/severian-dev/st-fish-audio/tree/ccc2641c9adf651b23f4bfd85b96286427cfbe74)，沿用 MIT 许可证。
+SillyTavern 1.18.0+ 多角色配音扩展，当前版本 0.7.1。基于 severian-dev 的 [st-fish-audio](https://github.com/severian-dev/st-fish-audio/tree/ccc2641c9adf651b23f4bfd85b96286427cfbe74)，沿用 MIT 许可证。
 
 ## 安装
 
@@ -13,6 +13,8 @@ https://github.com/latcia/st-drama3-audio
 安装完成后完整重载酒馆。已安装同名旧插件时，先使用扩展管理中的更新按钮；若旧插件来自其他仓库，需要替换为本仓库。更新前备份酒馆设置，不要删除聊天或服务端音色。
 
 点击悬浮音符打开配音台，也可以在内置 TTS 中选择 `Drama 3 Cast (Local)`。连接页填写自己的 Drama 3 桥接 API 基础地址、合成密钥和独立的音色管理密钥，再点击「保存并测试连接」。
+
+0.7.1 会将两把密钥按 API 地址保存在当前浏览器/App 本机存储，重载和重启后恢复。换回已保存的地址会自动回填；可点「清除此地址的密钥」删除。密钥不进入酒馆设置导出或仓库。清理站点数据、无痕会话结束或卸载 App 后，需要重新填写。浏览器拒绝写入本地存储时会明确提示保存失败。
 
 这个仓库仅提供浏览器前端和世界书，不包含 TTS 引擎、模型、参考音频或服务端凭据。需要一个已运行的兼容桥接服务，直接安装扩展不会启动模型。
 

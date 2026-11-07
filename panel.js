@@ -159,8 +159,8 @@ export function mountPanel() {
         <label>API 基础地址<input id="d3_endpoint" type="url" placeholder="http://127.0.0.1:8036"></label>
         <div class="d3-grid"><label>合成密钥<input id="d3_key" type="password" autocomplete="off"></label>
         <label>音色管理密钥<input id="d3_admin" type="password" autocomplete="off"></label></div>
-        <p class="d3-help">密钥仅留在当前页面会话，远程地址用 HTTPS。</p>
-        <div class="d3-actions"><button id="d3_connect">保存并测试连接</button><button id="d3_test">试听一句</button></div>
+        <p class="d3-help">密钥按 API 地址保存在本机，重启后自动恢复。远程地址用 HTTPS。</p>
+        <div class="d3-actions"><button id="d3_connect">保存并测试连接</button><button id="d3_test">试听一句</button><button type="button" id="d3_clear_keys">清除此地址的密钥</button></div>
         <p id="d3_connection_status" role="status"></p>
         </div>
       </section>
@@ -241,7 +241,17 @@ export function mountPanel() {
             connection('连接正常 · ' + provider.catalog.length + ' 个音色 · ' + Math.round(performance.now() - started) + ' ms');
         } catch (error) { connection(error.message); }
     });
-    $('endpoint').oninput = () => { $('key').value = ''; $('admin').value = ''; };
+    $('endpoint').oninput = () => {
+        let keys = { key: '', admin: '' };
+        try { keys = provider.credentials(value('endpoint')); } catch { /* Address may be incomplete while typing. */ }
+        $('key').value = keys.key; $('admin').value = keys.admin;
+    };
+    $('clear_keys').onclick = safe(() => {
+        provider.clearCredentials(value('endpoint'));
+        $('key').value = ''; $('admin').value = '';
+        player.stop(); submissions.stop();
+        connection('已清除此地址保存在本机的两把密钥。');
+    });
     $('edit_voice').onchange = safe(loadVoice);
     $('reload_voice').onclick = safe(loadVoice);
     $('refresh_voices').onclick = safe(async () => {

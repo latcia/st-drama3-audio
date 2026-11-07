@@ -7,7 +7,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "severian-dev (原版) / Latcia (本地适配)",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "minimum_client_version": "1.18.0",
   "description": "在一条消息内用多个本地 Drama 3 音色配音。",
   "auto_update": false,

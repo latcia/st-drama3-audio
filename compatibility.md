@@ -1,6 +1,8 @@
 # 客户端兼容性
 
-当前版本 0.7.0，最低 SillyTavern 版本 1.18.0。
+当前版本 0.7.1，最低 SillyTavern 版本 1.18.0。
+
+0.7.1 的合成和管理密钥按 API 地址保存在当前浏览器/App 的 localStorage，不进入宿主 TTS 设置。保存后重启页面自动读取；切换其他 API 地址隔离凭据，连接页可清除对应地址的两把密钥。本地存储不可写时保存会明确报错。
 
 0.7.0 的正文提取通过宿主已渲染的 `.mes_text` 或 `getContext().messageFormatting(mes, ch_name, isSystem, isUser, messageId)` 获取显示正则处理后的文本。该签名已按官方 1.18.0 `public/script.js` 核对。自动提交优先使用 `CHARACTER_MESSAGE_RENDERED`，旧宿主缺少该事件时使用 `MESSAGE_RECEIVED` 并调用宿主格式化接口。显示节点里的隐藏元素、代码及未打开的折叠内容不会进入列表。虚拟化消息的离线格式化可识别隐藏属性和行内样式；依赖页面 CSS 的可见性以实际挂载正文为准。
 
