@@ -1,5 +1,6 @@
 import { splitIntoChunks } from './lib.js';
 import { parseCast } from './parser.js';
+import { messageText } from './readable.js';
 
 export function submissionTurns(provider, text, scope) {
     const segments = parseCast(text, { ...provider.settings, mode: scope === 'full' ? 'all' : 'quotes' });
@@ -25,7 +26,7 @@ export class SubmissionQueue {
     }
 
     submit(provider, message, index, automatic) {
-        const text = message.mes;
+        const text = messageText(index);
         const previous = this.seen.get(message);
         if (previous?.text === text && (automatic || !previous.finished)) return;
         const record = { text, finished: false };

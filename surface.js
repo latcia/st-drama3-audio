@@ -1,5 +1,6 @@
 import { activeProvider, mountPanel, playPoint } from './panel.js';
 import { parseCast } from './parser.js';
+import { messageText, visibleNode } from './readable.js';
 
 let mounted = false;
 
@@ -7,7 +8,7 @@ function decorate(content, mesid) {
     const message = SillyTavern.getContext().chat?.[mesid];
     if (!message || message.is_system || message.is_user || typeof message.mes !== 'string') return;
     const raw = message.mes;
-    const ranges = parseCast(raw, activeProvider()?.settings).filter(part => part.clickable);
+    const ranges = parseCast(messageText(mesid, content), activeProvider()?.settings).filter(part => part.clickable);
     const candidates = new Map();
     for (const part of ranges) {
         if (!candidates.has(part.text)) candidates.set(part.text, []);
@@ -16,7 +17,7 @@ function decorate(content, mesid) {
     if (!candidates.size) return;
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
-            return node.parentElement?.closest('a, button, code, pre, script, style, textarea, iframe, [hidden]')
+            return !visibleNode(node, content) || node.parentElement?.closest('a, button, code, pre, script, style, textarea, iframe, [hidden]')
                 ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
         },
     });
@@ -107,29 +108,28 @@ export function mountSurface() {
     if (!chat) return;
     const tracked = new WeakMap();
     function scan(element, force = false) {
+        let changed = false;
         for (const message of element.matches?.('.mes') ? [element] : element.querySelectorAll?.('.mes') ?? []) {
             const content = message.querySelector('.mes_text');
             if (!content || !message.hasAttribute('mesid')) continue;
             const id = Number(message.getAttribute('mesid'));
             const raw = SillyTavern.getContext().chat?.[id]?.mes;
+            const displayed = messageText(id, content);
             const old = tracked.get(content);
-            if (old?.raw === raw && !force) continue;
+            if (old?.raw === raw && old.displayed === displayed && !force) continue;
             old?.cleanup?.();
-            tracked.set(content, { raw, cleanup: decorate(content, id) });
+            tracked.set(content, { raw, displayed, cleanup: decorate(content, id) });
+            changed = true;
         }
+        if (changed) document.dispatchEvent(new Event('d3-display'));
     }
-    const observer = new MutationObserver(records => {
-        for (const record of records) {
-            for (const node of record.addedNodes) {
-                if (node.nodeType === Node.ELEMENT_NODE && !node.closest('[data-d3-line]')) {
-                    scan(node.closest('.mes') ?? node);
-                }
-            }
-        }
+    let refreshFrame;
+    const observer = new MutationObserver(() => {
+        if (!refreshFrame) refreshFrame = requestAnimationFrame(() => { refreshFrame = null; scan(chat); });
     });
-    observer.observe(chat, { childList: true, subtree: true });
+    observer.observe(chat, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'] });
     document.addEventListener('d3-cast-provider', () => scan(chat, true));
     document.addEventListener('d3-cast-capture', () => scan(chat, true));
     scan(chat);
-    window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
+    window.addEventListener('pagehide', () => { observer.disconnect(); cancelAnimationFrame(refreshFrame); }, { once: true });
 }

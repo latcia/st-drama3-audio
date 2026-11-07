@@ -1,6 +1,10 @@
 # 客户端兼容性
 
-当前版本 0.6.4，最低 SillyTavern 版本 1.18.0。
+当前版本 0.7.0，最低 SillyTavern 版本 1.18.0。
+
+0.7.0 的正文提取通过宿主已渲染的 `.mes_text` 或 `getContext().messageFormatting(mes, ch_name, isSystem, isUser, messageId)` 获取显示正则处理后的文本。该签名已按官方 1.18.0 `public/script.js` 核对。自动提交优先使用 `CHARACTER_MESSAGE_RENDERED`，旧宿主缺少该事件时使用 `MESSAGE_RECEIVED` 并调用宿主格式化接口。显示节点里的隐藏元素、代码及未打开的折叠内容不会进入列表。虚拟化消息的离线格式化可识别隐藏属性和行内样式；依赖页面 CSS 的可见性以实际挂载正文为准。
+
+预设保存要求桥接支持 `preset_versioning: 1`，并回传 `metadata_version`。修改预设必须携带读取时的 `expected_version`；冲突返回 HTTP 409，前端保留编辑内容。旧桥接仍可查询音色和合成，但前端会提示升级后才能安全保存。旧前端在新版桥接上更新已有预设时会被要求刷新版本，避免绕过并发保护。
 
 2026-11-07 核对官方 1.18.0 标签源码。此前 1.19.0 的最低版本声明过严，导致 1.18.0 在加载 JavaScript 前拒绝扩展。所需接口在 1.18.0 已提供，无需更换 TTS 实现。
 

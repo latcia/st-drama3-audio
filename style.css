@@ -8,6 +8,8 @@
     gap: .6rem;
     max-width: calc(100vw - 2rem - env(safe-area-inset-right));
     pointer-events: none;
+    width: 48px;
+    height: 48px;
 }
 .d3-dock[data-phase=playing], .d3-dock[data-phase=complete] { --d3-signal: #a7e3cb; }
 .d3-dock[data-phase=paused] { --d3-signal: #f2d5a0; }
@@ -27,9 +29,13 @@
     box-shadow: 0 4px 18px #0007, inset 0 1px #fff2;
     cursor: pointer;
     pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
     transition: border-color .16s ease, transform .16s ease;
 }
 .d3-float:hover, .d3-dock[data-phase] .d3-float { border-color: var(--d3-signal); }
+.d3-float * { pointer-events: none; }
 .d3-float:active { transform: scale(.94); }
 .d3-float-wave { display: flex; align-items: center; gap: 3px; }
 .d3-float-wave i { width: 3px; height: 11px; border-radius: 4px; background: currentColor; }
@@ -53,8 +59,11 @@
     animation-iteration-count: infinite;
 }
 .d3-float-status {
+    position: absolute;
+    right: calc(100% + 10px);
+    width: max-content;
     min-width: 0;
-    max-width: min(240px, 58vw);
+    max-width: min(240px, 58vw, var(--d3-status-width, 240px));
     padding: .42rem .75rem .46rem;
     border-radius: 12px;
     border: 1px solid #514a65;
@@ -66,6 +75,8 @@
     transform: translateX(4px);
     transition: opacity .16s ease, transform .16s ease;
 }
+.d3-dock[data-side=left] .d3-float-status { right: auto; left: calc(100% + 10px); }
+.d3-dock[data-dragging] .d3-float { cursor: grabbing; transform: none; }
 .d3-dock[data-phase] .d3-float-status { opacity: 1; transform: none; }
 .d3-float-status strong, .d3-float-status small {
     display: block;
@@ -383,6 +394,11 @@
 }
 
 @media (max-width: 650px) {
+    .d3-dock { width: 38px; height: 38px; }
+    .d3-float { width: 38px; height: 38px; flex-basis: 38px; }
+    .d3-float-wave { transform: scale(.8); }
+    .d3-float-status { max-width: min(180px, 52vw, var(--d3-status-width, 180px)); padding: .3rem .5rem; font-size: 11px; }
+    .d3-float-status small { font-size: 10px; }
     .d3-console {
         width: calc(100% - 1.25rem);
         height: min(670px, calc(100dvh - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));

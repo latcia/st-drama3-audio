@@ -1,6 +1,8 @@
 import { CastPlayer } from './player.js';
 import { QUOTES, nameKey } from './parser.js';
 import { SubmissionQueue } from './submission.js';
+import { movableDock } from './dock.js';
+import { messageText } from './readable.js';
 
 let provider = null;
 let root;
@@ -10,6 +12,8 @@ let queue = [];
 let nextIndex = 0;
 let savedReference;
 let voiceLoad = 0;
+let editorDirty = false;
+let savingVoice = false;
 const worldbookUrl = new URL('./drama3-worldbook.json', import.meta.url).href;
 const $ = id => root?.querySelector('#d3_' + id);
 const value = id => $(id).value;
@@ -36,7 +40,12 @@ export function connectPanel(next) {
         nextIndex = 0;
         if (root) {
             $('edit_voice').value = '';
-            loadVoice();
+            savedReference = null;
+            editorDirty = false;
+            voiceLoad++;
+            for (const id of ['voice_id', 'label', 'aliases', 'transcript', 'audio']) $(id).value = '';
+            $('voice_id').readOnly = false;
+            renderReference();
         }
     }
     provider = next;
@@ -57,7 +66,7 @@ export function mountPanel() {
       </button>`;
     const float = dock.querySelector('button');
     const floatStatus = dock.querySelector('.d3-float-status');
-    float.onclick = openPanel;
+    float.title = '点击打开，拖动调整位置';
     root = document.createElement('dialog');
     root.className = 'd3-console';
     root.setAttribute('aria-labelledby', 'd3_title');
@@ -102,6 +111,8 @@ export function mountPanel() {
         <div class="d3-voice-layout">
         <div class="d3-card d3-preset-card">
         <h4>音色预设</h4>
+        <div class="d3-actions"><button type="button" id="d3_refresh_voices">刷新音色库</button><button type="button" id="d3_reload_voice">重新载入所选</button></div>
+        <p id="d3_sync_status" class="d3-help" role="status">连接后同步服务端预设。编辑中的内容不会被自动覆盖。</p>
         <label>选择预设<select id="d3_edit_voice"></select></label>
         <div class="d3-grid"><label>音色 ID<input id="d3_voice_id" maxlength="64" placeholder="cantarella"></label>
         <label>显示名<input id="d3_label" maxlength="80" placeholder="坎特蕾拉"></label></div>
@@ -155,6 +166,7 @@ export function mountPanel() {
       </section>
       </div></div>`;
     document.body.append(dock, root);
+    const cleanupDock = movableDock(dock, float, openPanel);
     let activeTrigger;
     let hideStatus;
     const showPlaybackState = (phase, text, detail = '') => {
@@ -231,6 +243,27 @@ export function mountPanel() {
     });
     $('endpoint').oninput = () => { $('key').value = ''; $('admin').value = ''; };
     $('edit_voice').onchange = safe(loadVoice);
+    $('reload_voice').onclick = safe(loadVoice);
+    $('refresh_voices').onclick = safe(async () => {
+        await provider.refresh(); renderVoices(); renderLines();
+        $('sync_status').textContent = '已刷新服务端音色库。若要放弃当前编辑并读取最新内容，点「重新载入所选」。';
+    });
+    for (const id of ['voice_id', 'label', 'aliases', 'transcript', 'audio']) {
+        $(id).addEventListener('input', () => { editorDirty = true; });
+    }
+    const catalogChanged = event => {
+        if (event.detail.provider !== provider) return;
+        renderVoices();
+        if (root.open) renderLines();
+        const selected = provider.catalog.find(item => item.id === value('edit_voice'));
+        const stale = savedReference && selected && savedReference.metadata_version !== selected.metadata_version;
+        $('sync_status').textContent = stale
+            ? '另一端更新了当前预设。你的编辑已保留，请重新载入后合并修改。'
+            : '音色库已同步 · ' + provider.catalog.length + ' 个音色';
+    };
+    document.addEventListener('d3-catalog', catalogChanged);
+    const displayChanged = () => { if (root.open && provider) renderLines(); };
+    document.addEventListener('d3-display', displayChanged);
     $('pick_audio').onclick = () => $('audio').click();
     $('audio').onchange = () => {
         stopReference();
@@ -261,7 +294,8 @@ export function mountPanel() {
     for (const event of [eventTypes?.CHAT_CHANGED, eventTypes?.MESSAGE_DELETED]) {
         if (event) handlers.push([event, () => submissions.clear()]);
     }
-    if (eventTypes?.MESSAGE_RECEIVED) {
+    const receivedEvent = eventTypes?.CHARACTER_MESSAGE_RENDERED ?? eventTypes?.MESSAGE_RECEIVED;
+    if (receivedEvent) {
         let generationStopped = false;
         if (eventTypes.GENERATION_STARTED) handlers.push([eventTypes.GENERATION_STARTED, (_type, _options, dryRun) => {
             if (!dryRun) generationStopped = false;
@@ -269,11 +303,15 @@ export function mountPanel() {
         if (eventTypes.GENERATION_STOPPED) handlers.push([eventTypes.GENERATION_STOPPED, () => {
             generationStopped = true;
         }]);
-        handlers.push([eventTypes.MESSAGE_RECEIVED, (index, type) => {
+        handlers.push([receivedEvent, (index, type) => {
             if (generationStopped || !provider?.settings.autoSubmit ||
                 !['normal', 'regenerate', 'swipe', 'continue', 'append', 'appendFinal'].includes(type)) return;
             const message = SillyTavern.getContext().chat?.[index];
-            if (isReply(message)) submissions.submit(provider, message, Number(index), true);
+            if (root.open) renderLines();
+            if (isReply(message)) {
+                try { submissions.submit(provider, message, Number(index), true); }
+                catch (error) { status(error.message); }
+            }
         }]);
     } else {
         $('autoSubmit').disabled = true;
@@ -294,6 +332,9 @@ export function mountPanel() {
         submissions.clear();
         player.stop();
         clearTimeout(hideStatus);
+        cleanupDock();
+        document.removeEventListener('d3-catalog', catalogChanged);
+        document.removeEventListener('d3-display', displayChanged);
     }, { once: true });
 }
 
@@ -326,7 +367,10 @@ export function openPanel() {
     if (!provider.catalog.length) {
         show('connection');
         provider.checkReady().then(() => { renderVoices(); connection('连接正常'); }).catch(error => connection(error.message));
-    } else show('play');
+    } else {
+        show('play');
+        provider.refresh().catch(error => { $('sync_status').textContent = error.message; });
+    }
 }
 
 function sync() {
@@ -374,6 +418,7 @@ async function loadVoice() {
     savedReference = null;
     const id = value('edit_voice');
     const owner = provider;
+    editorDirty = false;
     $('voice_id').value = id;
     $('voice_id').readOnly = !!id;
     $('audio').value = '';
@@ -386,7 +431,11 @@ async function loadVoice() {
         const result = await (await owner.request('/v1/voice-presets', { admin: true })).json();
         if (load !== voiceLoad || provider !== owner || id !== value('edit_voice')) return;
         savedReference = result.voices.find(item => item.id === id);
-        $('transcript').value = savedReference?.text ?? '';
+        if (!editorDirty) {
+            $('transcript').value = savedReference?.text ?? '';
+            $('label').value = savedReference?.label ?? voice?.label ?? '';
+            $('aliases').value = (savedReference?.aliases ?? voice?.aliases ?? []).join('，');
+        }
         renderReference();
     }
 }
@@ -405,7 +454,18 @@ async function previewReference() {
 }
 
 async function saveVoice() {
+    if (savingVoice) return;
+    const owner = provider;
+    const generation = owner.connectionGeneration;
+    if (!owner.presetVersioning) throw new Error('服务端需升级后才能安全保存多端预设，请先更新并重启桥接。');
+    if (value('edit_voice') && !savedReference?.metadata_version) throw new Error('请先重新载入所选预设，再保存修改。');
+    const body = { id: value('voice_id').trim(), label: value('label').trim(), text: value('transcript').trim(),
+        aliases: value('aliases'), expected_version: savedReference?.metadata_version ?? null };
     const file = $('audio').files[0];
+    savingVoice = true;
+    const editorControls = ['save_voice', 'edit_voice', 'voice_id', 'label', 'aliases', 'transcript', 'audio', 'pick_audio', 'reload_voice'];
+    for (const id of editorControls) $(id).disabled = true;
+    try {
     let audio;
     if (file) {
         if (file.size > 8 * 1024 * 1024) throw new Error('参考音频最多 8 MiB。');
@@ -417,14 +477,25 @@ async function saveVoice() {
         });
         audio = url.slice(url.indexOf(',') + 1);
     }
-    const body = { id: value('voice_id').trim(), label: value('label').trim(), text: value('transcript').trim(),
-        aliases: value('aliases'), audio, filename: file?.name };
-    await provider.request('/v1/voice-presets', { admin: true, body });
-    await provider.refresh();
+    if (owner !== provider || generation !== owner.connectionGeneration) throw new Error('连接已切换，请重新保存。');
+    Object.assign(body, { audio, filename: file?.name });
+    await owner.request('/v1/voice-presets', { admin: true, body });
+    await owner.refresh();
+    if (owner !== provider || generation !== owner.connectionGeneration) return;
     renderVoices();
     $('edit_voice').value = body.id;
     await loadVoice();
     status('音色预设已保存');
+    } catch (error) {
+        if (error.status === 409) {
+            $('sync_status').textContent = error.message;
+            owner.refresh().catch(() => {});
+        }
+        throw error;
+    } finally {
+        savingVoice = false;
+        for (const id of editorControls) $(id).disabled = false;
+    }
 }
 
 function saveBindings() {
@@ -453,7 +524,8 @@ function isReply(message) {
 }
 
 function lastText() {
-    return (SillyTavern.getContext().chat ?? []).findLast(isReply)?.mes ?? '';
+    const index = (SillyTavern.getContext().chat ?? []).findLastIndex(isReply);
+    return index >= 0 ? messageText(index) : '';
 }
 
 function submitLatest() {
@@ -461,7 +533,8 @@ function submitLatest() {
     const chat = SillyTavern.getContext().chat ?? [];
     const index = chat.findLastIndex(isReply);
     if (index < 0) return status('当前聊天还没有可提交的回复。');
-    submissions.submit(provider, chat[index], index, false);
+    try { submissions.submit(provider, chat[index], index, false); }
+    catch (error) { status(error.message); }
 }
 
 function renderLines() {

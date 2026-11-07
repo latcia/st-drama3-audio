@@ -2,6 +2,7 @@ import { initVoiceMap, saveTtsProviderSettings } from '../../tts/index.js';
 import { rewriteCues, sanitizeLabel, SILENCE_URL } from './lib.js';
 import { DEFAULT_CAPTURE, parseCast, resolveCastVoice } from './parser.js';
 import { connectPanel, openPanel } from './panel.js';
+import { nativeText } from './readable.js';
 
 const ENDPOINT = 'http://127.0.0.1:8036';
 const credentials = new Map();
@@ -23,6 +24,9 @@ export class Drama3TtsProvider {
     separator = ' ';
     controller = new AbortController();
     audioCache = new Map();
+    catalogVersion = '';
+    presetVersioning = false;
+    refreshGeneration = 0;
 
     get settingsHtml() {
         return '<button type="button" class="menu_button" id="d3_open_panel">打开 Drama 3 配音台</button>';
@@ -44,11 +48,18 @@ export class Drama3TtsProvider {
             this.settings.legacyBindings = Object.fromEntries(stored.speakers.filter(s => s.name && s.voice).map(s => [s.name, s.voice]));
         } else if (stored.legacyBindings) this.settings.legacyBindings = stored.legacyBindings;
         connectPanel(this);
+        this.syncTimer = setInterval(() => {
+            if (document.visibilityState === 'visible' && this.catalog.length) this.refresh().catch(() => {});
+        }, 30000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && this.catalog.length) this.refresh().catch(() => {});
+        }, { signal: this.controller.signal });
         document.getElementById('d3_open_panel')?.addEventListener('click', openPanel, { signal: this.controller.signal });
     }
 
     dispose() {
         this.controller.abort();
+        clearInterval(this.syncTimer);
         connectPanel(null);
     }
 
@@ -57,11 +68,14 @@ export class Drama3TtsProvider {
 
     configure(address, key, admin) {
         const endpoint = endpointUrl(address);
-        if (endpoint !== this.settings.endpoint) { this.catalog = []; this.audioCache.clear(); }
+        if (endpoint !== this.settings.endpoint) { this.catalog = []; this.catalogVersion = ''; this.audioCache.clear(); }
+        ++this.connectionGeneration;
         credentials.set(endpoint, { key: key.trim(), admin: admin.trim() });
         this.settings.endpoint = endpoint;
         this.save();
     }
+
+    connectionGeneration = 0;
 
     credentials() {
         return credentials.get(this.settings.endpoint) ?? { key: '', admin: '' };
@@ -88,16 +102,26 @@ export class Drama3TtsProvider {
         }
         if (!response.ok) {
             const data = await response.json().catch(() => null);
-            throw new Error(data?.error ?? ('Drama 3 HTTP ' + response.status));
+            const error = new Error(data?.error ?? ('Drama 3 HTTP ' + response.status));
+            error.status = response.status;
+            throw error;
         }
         return response;
     }
 
     async refresh(signal) {
         const endpoint = this.settings.endpoint;
+        const generation = this.connectionGeneration;
+        const refresh = ++this.refreshGeneration;
         const data = await (await this.request('/v1/voices', { signal })).json();
-        if (endpoint !== this.settings.endpoint) return this.catalog;
+        if (endpoint !== this.settings.endpoint || generation !== this.connectionGeneration || refresh !== this.refreshGeneration) return this.catalog;
+        this.presetVersioning = data.preset_versioning === 1;
         this.catalog = data.voices.filter(v => /^[a-z0-9_-]{1,64}$/.test(v.id));
+        const version = JSON.stringify(this.catalog);
+        if (version !== this.catalogVersion) {
+            this.catalogVersion = version;
+            document.dispatchEvent(new CustomEvent('d3-catalog', { detail: { provider: this } }));
+        }
         return this.catalog;
     }
 
@@ -138,7 +162,7 @@ export class Drama3TtsProvider {
     // The native TTS host flattens line breaks after processText. Preserve the
     // script for its next generateTts call without making markers user-editable.
     async processText(text) {
-        const payload = JSON.stringify(this.parse(text));
+        const payload = JSON.stringify(this.parse(nativeText(text)));
         return 'D3CAST:' + Array.from(new TextEncoder().encode(payload), b => b.toString(16).padStart(2, '0')).join('');
     }
 
@@ -147,7 +171,7 @@ export class Drama3TtsProvider {
         const marker = /^D3CAST:((?:[a-f0-9]{2})+)$/i.exec(text.trim());
         const script = marker
             ? JSON.parse(new TextDecoder().decode(Uint8Array.from(marker[1].match(/../g), b => parseInt(b, 16))))
-            : this.parse(text);
+            : this.parse(nativeText(text));
         const turns = this.turns(script, hostVoice).filter(turn => turn.voice && turn.text);
         if (!turns.length) return SILENCE_URL;
         return this.speech(turns);
