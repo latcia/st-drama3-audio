@@ -104,6 +104,7 @@ export function mountPanel() {
           <div id="d3_results" class="d3-results"></div>
         </div>
         <div class="d3-section-heading"><h4>台词列表</h4><small>也可点正文里的下划线</small></div>
+        <p id="d3_source_status" class="d3-help" role="status"></p>
         <div id="d3_lines" class="d3-lines"></div>
       </section>
       <section data-page="voices" hidden>
@@ -552,7 +553,17 @@ function renderLines() {
     const box = $('lines');
     box.replaceChildren();
     if (!provider) return;
-    for (const segment of provider.turns(provider.parse(lastText()))) {
+    let text;
+    try { text = lastText(); }
+    catch (error) { $('source_status').textContent = error.message; return; }
+    const index = (SillyTavern.getContext().chat ?? []).findLastIndex(isReply);
+    const segments = provider.turns(provider.parse(text));
+    $('source_status').textContent = index < 0 ? '当前没有可读取的回复。'
+        : `读取第 ${index + 1} 条回复的显示正文 · ${text.length} 字 · ${segments.length} 段`;
+    if (!segments.length && text.includes('「') && !provider.settings.capture.jp) {
+        $('source_status').textContent += '。正文含「」，请在台词识别中启用「」。';
+    }
+    for (const segment of segments) {
         const line = button((segment.speaker ?? (segment.narration ? '旁白' : '对白')) + ' · ' + segment.text,
             safe(event => playPoint(segment, event.currentTarget)));
         line.disabled = !segment.voice;
@@ -584,8 +595,9 @@ async function playQueue(turns, mode, start = 0, options = {}) {
     }
 }
 
-export async function playText(text = lastText()) {
+export async function playText(text) {
     if (!ensureProvider()) return;
+    text ??= lastText();
     if (!provider.catalog.length) return status('请先到连接测试页刷新音色。');
     const turns = provider.turns(provider.parse(text)).filter(turn => turn.voice && turn.text);
     if (!turns.length) return status('这条消息没有可朗读台词。');

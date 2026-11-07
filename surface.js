@@ -1,10 +1,11 @@
 import { activeProvider, mountPanel, playPoint } from './panel.js';
 import { parseCast } from './parser.js';
-import { messageText, visibleNode } from './readable.js';
+import { messageText, visibleNode, displayed, bindMessageContent } from './readable.js';
 
 let mounted = false;
 
 function decorate(content, mesid) {
+    if (!displayed(content)) return;
     const message = SillyTavern.getContext().chat?.[mesid];
     if (!message || message.is_system || message.is_user || typeof message.mes !== 'string') return;
     const raw = message.mes;
@@ -92,9 +93,10 @@ export function mountSurface() {
             api.registerParticipant({
                 id: 'drama3-cast/dialogue', protocolVersion: 1,
                 didCommitContent: ({ content, mesid }) => {
+                    const release = bindMessageContent(Number(mesid), content);
                     const entry = { content, id: Number(mesid), cleanup: decorate(content, Number(mesid)) };
                     mountedContent.set(content, entry);
-                    return () => { entry.cleanup?.(); mountedContent.delete(content); };
+                    return () => { entry.cleanup?.(); release(); mountedContent.delete(content); };
                 },
             });
             document.addEventListener('d3-cast-provider', redraw);
@@ -110,15 +112,15 @@ export function mountSurface() {
     function scan(element, force = false) {
         let changed = false;
         for (const message of element.matches?.('.mes') ? [element] : element.querySelectorAll?.('.mes') ?? []) {
-            const content = message.querySelector('.mes_text');
+            const content = [...message.querySelectorAll('.mes_text')].find(node => displayed(node));
             if (!content || !message.hasAttribute('mesid')) continue;
             const id = Number(message.getAttribute('mesid'));
             const raw = SillyTavern.getContext().chat?.[id]?.mes;
-            const displayed = messageText(id, content);
+            const displayText = messageText(id, content);
             const old = tracked.get(content);
-            if (old?.raw === raw && old.displayed === displayed && !force) continue;
+            if (old?.raw === raw && old.displayed === displayText && !force) continue;
             old?.cleanup?.();
-            tracked.set(content, { raw, displayed, cleanup: decorate(content, id) });
+            tracked.set(content, { raw, displayed: displayText, cleanup: decorate(content, id) });
             changed = true;
         }
         if (changed) document.dispatchEvent(new Event('d3-display'));

@@ -9,6 +9,32 @@ export function nameKey(value) {
 
 const NAME = /^\s*(?:\*\*|__)?([\p{L}\p{N}][\p{L}\p{N} .’'_-]{0,39}?)(?:\*\*|__)?\s*[:：](?!\/\/)\s*/u;
 
+// A displayed paragraph or <br> can split a single quoted utterance.
+function scriptLines(text, capture) {
+    const pairs = Object.entries(QUOTES).filter(([key]) => capture[key]).map(([, pair]) => pair);
+    const result = [];
+    let current = '', active = null, depth = 0;
+    for (const line of text.split(/\r?\n/)) {
+        // An unclosed quote must not swallow the next speaker or translation.
+        if (active && NAME.test(line)) {
+            result.push(current); current = ''; active = null; depth = 0;
+        }
+        current += (current ? ' ' : '') + line.trim();
+        for (let i = 0; i < line.length; i++) {
+            if (line[i - 1] === '\\') continue;
+            if (!active) {
+                active = pairs.find(([open]) => line[i] === open) ?? null;
+                if (active) depth = 1;
+            } else if (line[i] === active[1]) {
+                if (--depth === 0) active = null;
+            } else if (active[0] !== active[1] && line[i] === active[0]) depth++;
+        }
+        if (!active) { result.push(current); current = ''; }
+    }
+    if (current) result.push(current);
+    return result;
+}
+
 export function quoteRanges(text, capture = DEFAULT_CAPTURE) {
     const pairs = Object.entries(QUOTES).filter(([key]) => capture[key]).map(([, pair]) => pair);
     const ranges = [];
@@ -34,7 +60,7 @@ export function parseCast(text, settings = {}) {
     const mode = settings.mode ?? 'all';
     const clean = removeUnspoken(text, { extraTags: ['infobox', 'status', 'stats'] });
     const segments = [];
-    for (const line of clean.split(/\r?\n/)) {
+    for (const line of scriptLines(clean, capture)) {
         if (!line.trim()) continue;
         const label = NAME.exec(line);
         const speaker = label?.[1]?.trim() ?? null;
