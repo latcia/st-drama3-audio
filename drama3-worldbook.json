@@ -1,0 +1,46 @@
+{
+  "entries": {
+    "0": {
+      "uid": 0,
+      "key": [],
+      "keysecondary": [],
+      "comment": "Drama 3 配音 · 中文台词与表演",
+      "content": "请保持故事内容和自然中文，每个发言单独一行，使用「角色名：『台词』」或「角色名：「台词」」的形式，例如 坎特蕾拉：「你听见了吗？」。角色名保持一致；旁白独立成行，格式为 旁白：叙述。避免把多个人的发言写进同一行。只有剧情确实需要时才在引号内、对应短句之前加入 Drama 3 表演提示：[sighs] 表示叹气，[laughs] 表示笑。普通对白保持自然，不必每句加提示。其余语气通过文字、句式和标点表达。不要输出模型内部的说话人编号，也不要在正文里解释这些格式规则。",
+      "constant": true,
+      "vectorized": false,
+      "selective": true,
+      "selectiveLogic": 0,
+      "addMemo": true,
+      "order": 100,
+      "position": 0,
+      "disable": false,
+      "excludeRecursion": true,
+      "preventRecursion": true,
+      "useProbability": true,
+      "probability": 100,
+      "depth": 4,
+      "displayIndex": 0
+    },
+    "1": {
+      "uid": 1,
+      "key": [],
+      "keysecondary": [],
+      "comment": "Drama 3 配音 · 日语台词与中文字幕",
+      "content": "旁白保持自然中文。每个角色每次发言单独写两行：第一行用固定角色名和冒号，日语台词只放在一对「」中；第二行用“译文：”开头，后接自然的中文翻译，不加引号。示例：\n坎特蕾拉：「波の音が聞こえる？」\n译文：你听见海浪声了吗？\n旁白和译文中避免使用「」；如果需要引用，使用其他引号。角色名保持与聊天和音色绑定一致。仅在剧情确实需要时，在日语引号内、对应短句之前加入 [sighs]（叹气）或 [laughs]（笑）；中文译文不重复这些标签。不要输出模型内部的说话人编号，也不要在正文解释本格式。",
+      "constant": true,
+      "vectorized": false,
+      "selective": true,
+      "selectiveLogic": 0,
+      "addMemo": true,
+      "order": 100,
+      "position": 0,
+      "disable": true,
+      "excludeRecursion": true,
+      "preventRecursion": true,
+      "useProbability": true,
+      "probability": 100,
+      "depth": 4,
+      "displayIndex": 1
+    }
+  }
+}
