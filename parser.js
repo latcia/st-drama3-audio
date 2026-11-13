@@ -58,6 +58,33 @@ export function quoteRanges(text, capture = DEFAULT_CAPTURE) {
     return ranges;
 }
 
+// A delivery direction is a bracket block at the start of the line body or
+// right before the quote: "乔克：[低声]「台词」" / "他顿了顿，[低声]「台词」".
+// It belongs to the following line and is sent with it, never read as narration.
+const DIRECTIVE_BLOCK = /\[[^\[\]\n]{1,80}\](?!\()/;
+const DIRECTIVE_TAIL = /\[[^\[\]\n]{1,80}\](?!\()$/;
+
+function splitDirective(text) {
+    const head = [];
+    const tail = [];
+    let rest = text;
+    for (;;) {
+        const trimmed = rest.replace(/^\s+/, '');
+        const match = DIRECTIVE_BLOCK.exec(trimmed);
+        if (!match || match.index !== 0) break;
+        head.push(match[0]);
+        rest = trimmed.slice(match[0].length);
+    }
+    for (;;) {
+        const trimmed = rest.replace(/\s+$/, '');
+        const match = DIRECTIVE_TAIL.exec(trimmed);
+        if (!match) break;
+        tail.unshift(match[0]);
+        rest = trimmed.slice(0, match.index);
+    }
+    return { directive: [...head, ...tail].join(' '), remaining: rest.trim() };
+}
+
 export function parseCast(text, settings = {}) {
     const capture = settings.capture ?? DEFAULT_CAPTURE;
     const mode = settings.mode ?? 'all';
@@ -85,8 +112,13 @@ export function parseCast(text, settings = {}) {
             let offset = 0;
             for (const quote of quotes) {
                 const before = body.slice(offset, quote.start - 1).trim();
-                if (before && mode === 'all') segments.push({ speaker: null, narration: true, text: before, clickable: false });
-                if (capture[quote.kind]) segments.push({ speaker, narration: false, text: quote.text, clickable: true });
+                const { directive, remaining } = splitDirective(before);
+                if (remaining && mode === 'all') segments.push({ speaker: null, narration: true, text: remaining, clickable: false });
+                if (capture[quote.kind]) {
+                    const dialogue = { speaker, narration: false, text: quote.text, clickable: true };
+                    if (directive) dialogue.directive = directive;
+                    segments.push(dialogue);
+                }
                 offset = quote.end + 1;
             }
             const after = body.slice(offset).trim();

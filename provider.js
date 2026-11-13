@@ -180,7 +180,11 @@ export class Drama3TtsProvider {
         const settings = this.bindingSettings();
         return segments.map(segment => {
             const match = resolveCastVoice(segment, settings, this.catalog, hostVoice);
-            return { ...segment, ...match, text: rewriteCues(segment.text, 'drama-3', this.settings.cues) };
+            // The direction goes out in the same request as its line. Clearing it
+            // here keeps a second turns() pass from prefixing it twice.
+            const directive = segment.directive ? `${segment.directive} ` : '';
+            return { ...segment, ...match, directive: '',
+                text: rewriteCues(directive + segment.text, 'drama-3', this.settings.cues).trim() };
         });
     }
 
